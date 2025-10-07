@@ -1,0 +1,119 @@
+config:
+  target: "http://localhost:3002"
+  phases:
+    # Fase 1: Test de race condition (10 usuarios, 1 producto)
+    - name: "Race Condition Test"
+      duration: 10
+      arrivalCount: 10
+    - pause: 5
+    # Fase 2: Test de alta concurrencia (25 usuarios, 10 productos)
+    - name: "High Concurrency Test"
+      duration: 15
+      arrivalCount: 25
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+
+  processor: "./artillery-processor.js"  # Script de helpers
+
+  variables:
+    lockingStrategy:
+      - "PESSIMISTIC"
+      - "OPTIMISTIC"
+      - "APPLICATION"
+
+scenarios:
+  # Escenario 1: 10 usuarios compitiendo por 1 unidad
+  - name: "Reserve single product with 1 stock (Race Condition)"
+    weight: 40
+    flow:
+      - function: "generateOrderId"
+      - post:
+          url: "/inventory/reserve"
+          json:
+            orderId: "{{ orderId }}"
+            productId: "prod_test_001"
+            quantity: 1
+            lockingStrategy: "{{ lockingStrategy }}"
+          capture:
+            - json: "$.success"
+              as: "reserveSuccess"
+            - json: "$.message"
+              as: "reserveMessage"
+          expect:
+            - statusCode:
+                - 200
+                - 409
+          afterResponse: "logReservation"
+
+  # Escenario 2: 25 usuarios compitiendo por 10 unidades
+  - name: "Reserve product with limited stock (High Concurrency)"
+    weight: 60
+    flow:
+      - function: "generateOrderId"
+      - post:
+          url: "/inventory/reserve"
+          json:
+            orderId: "{{ orderId }}"
+            productId: "prod_test_002"
+            quantity: 1
+            lockingStrategy: "{{ lockingStrategy }}"
+          capture:
+            - json: "$.success"
+              as: "reserveSuccess"
+            - json: "$.availableQuantity"
+              as: "availableStock"
+          expect:
+            - statusCode:
+                - 200
+                - 409
+          afterResponse: "logReservation"
+      - get:
+          url: "/inventory/availability/prod_test_002"
+          ifTrue: "reserveSuccess"
+          capture:
+            - json: "$.availableQuantity"
+              as: "currentStock"
+
+  # Escenario 3: Test de bulk reserve con rollback
+  - name: "Bulk reserve with intentional failure (Rollback test)"
+    weight: 10
+    flow:
+      - function: "generateOrderId"
+      - post:
+          url: "/inventory/reserve/bulk"
+          json:
+            orderId: "{{ orderId }}"
+            items:
+              - productId: "prod_001"  # Producto existente
+                quantity: 1
+              - productId: "prod_999"  # Producto inexistente
+                quantity: 1
+            lockingStrategy: "{{ lockingStrategy }}"
+          expect:
+            - statusCode:
+                - 404
+                - 409
+                - 500
+
+      # Verificar que el stock de prod_001 no cambió (rollback exitoso)
+      - get:
+          url: "/inventory/availability/prod_001"
+          capture:
+            - json: "$.availableQuantity"
+              as: "stockAfterRollback"
+
+  # Escenario 4: Release stock
+  - name: "Release reserved stock"
+    weight: 5
+    flow:
+      - function: "generateOrderId"
+      - post:
+          url: "/inventory/release"
+          json:
+            orderId: "{{ orderId }}"
+            productId: "prod_002"
+            quantity: 1
+          expect:
+            - statusCode: 200
