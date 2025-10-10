@@ -57,26 +57,26 @@ services:
       retries: 5
     networks:
       - ecommerce-network
-#
-#  tracking-db:
-#    image: postgres:15-alpine
-#    container_name: tracking-db
-#    ports:
-#      - "5435:5432"
-#    environment:
-#      POSTGRES_USER: tracking_user
-#      POSTGRES_PASSWORD: tracking_pass
-#      POSTGRES_DB: tracking_db
-#    volumes:
-#      - tracking_db_data:/var/lib/postgresql/data
-#      - ./tracking-service/database/init.sql:/docker-entrypoint-initdb.d/init.sql
-#    healthcheck:
-#      test: ["CMD-SHELL", "pg_isready -U tracking_user -d tracking_db"]
-#      interval: 10s
-#      timeout: 5s
-#      retries: 5
-#    networks:
-#      - ecommerce-network
+
+  tracking-db:
+    image: postgres:15-alpine
+    container_name: tracking-db
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: tracking_user
+      POSTGRES_PASSWORD: tracking_pass
+      POSTGRES_DB: tracking_db
+    volumes:
+      - tracking_db_data:/var/lib/postgresql/data
+      - ./tracking-service/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracking_user -d tracking_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecommerce-network
 
   api-gateway:
     build:
